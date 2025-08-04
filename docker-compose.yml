@@ -2,7 +2,7 @@ version: '2'
 
 services:
   front-end:
-    image: front-end-optimised:latest
+    image: glenthereb/front-end-optimised:latest
     hostname: front-end
     restart: always
     cap_drop:
