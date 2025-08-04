@@ -13,6 +13,7 @@ var request      = require("request")
   , orders       = require("./api/orders")
   , user         = require("./api/user")
   , metrics      = require("./api/metrics")
+  , bundle       = require("./api/bundle")
   , app          = express()
 
 
@@ -49,6 +50,7 @@ app.use(cart);
 app.use(catalogue);
 app.use(orders);
 app.use(user);
+app.use(bundle);
 
 app.use(helpers.errorHandler);
 

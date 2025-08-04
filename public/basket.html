@@ -361,16 +361,48 @@ _________________________________________________________ -->
             contentType: "application/json; charset=utf-8"
         });
 
-        $.getJSON('/cart', {}, function (data) {
-            if (data != null) {
+        // Single bundled request instead of 4+ separate AJAX calls
+        $.getJSON('/bundle/basket', function (bundledData) {
+            console.log("Bundle response received:", bundledData);
+            
+            // Process cart items
+            processCartItems(bundledData.cart);
+            
+            // Process payment info
+            processPaymentInfo(bundledData.card);
+            
+            // Process address info
+            processAddressInfo(bundledData.address);
+            
+            // Process recommendations
+            processRecommendations(bundledData.recommendations);
+            
+        }).fail(function(jqXHR, textStatus, errorThrown) {
+            console.error("Bundle request failed:", textStatus, errorThrown);
+            // Fallback to individual requests if bundle fails
+            loadDataIndividually();
+        });
+
+        // Function to process cart items
+        function processCartItems(cartData) {
+            if (cartData != null) {
                 var cartTotal = 0;
                 var numItemsInCart = 0;
                 var shipping = 4.99;
                 var orderPlaced = false;
-                $.each(data, function (index, element) {
+                var processedItems = 0;
+                var totalItems = cartData.length;
+                
+                if (totalItems === 0) {
+                    $('#numItemsInCart').text('Your cart is empty.');
+                    return;
+                }
+                
+                $.each(cartData, function (index, element) {
                     if (element != null && element.itemId != null && element.itemId != "null") {
+                        // Get individual product details (this call still needed for product info)
                         $.getJSON('/catalogue/' + element.itemId, function (data) {
-                            console.log(JSON.stringify(data));
+                            console.log("Product data:", JSON.stringify(data));
                             $('#cart-list').append(' <tr class="item">\
                                                 <input class="id" type="hidden" value="' + data.id + '">\
                                                 <td>\
@@ -392,69 +424,84 @@ _________________________________________________________ -->
                                                 </td>\
                                             </tr>');
                             cartTotal = cartTotal + element.quantity * data.price;
-                            console.log("Cur total: " + cartTotal);
+                            console.log("Current total: " + cartTotal);
                             numItemsInCart = numItemsInCart + element.quantity;
-                        }).always(function () {
-                            console.log("Final counts: $" + cartTotal + ", with " + numItemsInCart + " items.");
-                            $('#orderButton').prop('disabled', false);
-                            if ($('p#address').text() === 'No address saved for user.' || $('p#number').text() === 'No credit card saved for user.') {
-                                $('#orderButton').click(function(event) {
-                                    event.stopPropagation();
-                                    event.preventDefault();
-                                    $("#user-message").html('<div class="alert alert-danger alert-dismissible" role="alert"><button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button> Could not place order. Missing shipping or payment information.</div>');
-                                    return false;
-                                });
-                            } else {
-                                $('#orderButton').click(function(event) {
-                                    if (orderPlaced == false) {
-                                      orderPlaced = true;
-                                      return order();
-				    }
-                                });
+                            processedItems++;
+                            
+                            // When all items are processed, update totals
+                            if (processedItems === totalItems) {
+                                updateCartTotals(cartTotal, numItemsInCart, shipping, orderPlaced);
                             }
-                            $('#numItemsInCart').text('You currently have ' + numItemsInCart + ' item(s) in your cart.');
-                            $('#cartTotal').text('$' + cartTotal.toFixed(2));
-                            $('#orderSubtotal').text('$' + cartTotal.toFixed(2));
-                            $('#orderShipping').text('$' + shipping.toFixed(2));
-                            $('#orderGrandTotal').text('$' + (cartTotal + shipping).toFixed(2));
                         });
                     }
                 });
-
+            } else {
+                $('#numItemsInCart').text('Your cart is empty.');
             }
-        });
+        }
 
-        $.getJSON('/card', function(data) {
-            if (data.status_code !== 500) {
-                $("p#number").text("Card ending in " + data.number).css("color", "black");
+        // Function to update cart totals and button states
+        function updateCartTotals(cartTotal, numItemsInCart, shipping, orderPlaced) {
+            console.log("Final counts: $" + cartTotal + ", with " + numItemsInCart + " items.");
+            $('#orderButton').prop('disabled', false);
+            
+            if ($('p#address').text() === 'No address saved for user.' || $('p#number').text() === 'No credit card saved for user.') {
+                $('#orderButton').click(function(event) {
+                    event.stopPropagation();
+                    event.preventDefault();
+                    $("#user-message").html('<div class="alert alert-danger alert-dismissible" role="alert"><button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button> Could not place order. Missing shipping or payment information.</div>');
+                    return false;
+                });
+            } else {
+                $('#orderButton').click(function(event) {
+                    if (orderPlaced == false) {
+                        orderPlaced = true;
+                        return order();
+                    }
+                });
+            }
+            
+            $('#numItemsInCart').text('You currently have ' + numItemsInCart + ' item(s) in your cart.');
+            $('#cartTotal').text('$' + cartTotal.toFixed(2));
+            $('#orderSubtotal').text('$' + cartTotal.toFixed(2));
+            $('#orderShipping').text('$' + shipping.toFixed(2));
+            $('#orderGrandTotal').text('$' + (cartTotal + shipping).toFixed(2));
+        }
+
+        // Function to process payment info
+        function processPaymentInfo(cardData) {
+            if (cardData && cardData.status_code !== 500) {
+                $("p#number").text("Card ending in " + cardData.number).css("color", "black");
                 $("#add_payment").hide();
             } else {
                 $("p#number").text("No credit card saved for user.").css("color", "red");
                 $("#add_payment").show();
             }
-        });
+        }
 
-        $.getJSON('/address', function(data) {
-            if (data.status_code !== 500) {
-                var text = data.number + " ";
-                text += data.street
+        // Function to process address info
+        function processAddressInfo(addressData) {
+            if (addressData && addressData.status_code !== 500) {
+                var text = addressData.number + " ";
+                text += addressData.street;
                 text += "</br>";
-                text += data.city;
+                text += addressData.city;
                 text += "</br>";
-                text += data.postcode;
+                text += addressData.postcode;
                 text += "</br>";
-                text += data.country;
+                text += addressData.country;
                 $("p#address").html(text).css("color", "black");
                 $("#add_shipping").hide();
             } else {
                 $("p#address").text("No address saved for user.").css("color", "red");
                 $("#add_shipping").show();
             }
-        });
+        }
 
-        $.getJSON('/catalogue', {size: 3}, function (data) {
-            if (data != null) {
-                $.each(data, function (index, element) {
+        // Function to process recommendations
+        function processRecommendations(recommendationsData) {
+            if (recommendationsData != null) {
+                $.each(recommendationsData, function (index, element) {
                     $('#youMayAlsoLike').append(
                             '<div class="col-md-3 col-sm-6">\
                                 <div class="product same-height">\
@@ -483,10 +530,31 @@ _________________________________________________________ -->
                             </div>'
                     );
                 });
+                $(window).trigger('resize');
             }
-        }).always(
-                $(window).trigger('resize')
-        );
+        }
+
+        // Fallback function for individual requests (if bundle fails)
+        function loadDataIndividually() {
+            console.log("Loading data individually as fallback...");
+            
+            $.getJSON('/cart', {}, function (data) {
+                processCartItems(data);
+            });
+
+            $.getJSON('/card', function(data) {
+                processPaymentInfo(data);
+            });
+
+            $.getJSON('/address', function(data) {
+                processAddressInfo(data);
+            });
+
+            $.getJSON('/catalogue', {size: 3}, function (data) {
+                processRecommendations(data);
+                $(window).trigger('resize');
+            });
+        }
     });
 
 </script>
